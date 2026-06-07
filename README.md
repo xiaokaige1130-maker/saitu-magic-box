@@ -1,4 +1,4 @@
-# 晒图魔方
+# 筛图魔术盒
 
 Windows 原生 EXE 图片整理工具，用于摄影/电商图片分类、重复识别、AI 初筛和人工复核。
 
@@ -52,7 +52,7 @@ cd C:\Users\云电脑\image-cube
 生成位置：
 
 ```text
-C:\Users\云电脑\image-cube\dist\晒图魔方\晒图魔方.exe
+C:\Users\云电脑\image-cube\dist\筛图魔术盒\筛图魔术盒.exe
 ```
 
 打包后的程序直接打开 Windows 桌面窗口，不启动浏览器页面。

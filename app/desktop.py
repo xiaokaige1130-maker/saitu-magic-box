@@ -17,7 +17,15 @@ from .scanner import scan_folder
 
 
 DEFAULT_FOLDER = r"C:\Users\云电脑\Desktop\白底图\外贸绞肉机图"
-DEFAULT_OUTPUT_FOLDER = r"C:\Users\云电脑\Desktop\晒图魔方输出"
+APP_NAME = "筛图魔术盒"
+DEFAULT_OUTPUT_FOLDER = rf"C:\Users\云电脑\Desktop\{APP_NAME}输出"
+FONT_FAMILY = "Microsoft YaHei"
+
+
+def ui_font(size: int, weight: str = "normal") -> tuple[str, int] | tuple[str, int, str]:
+    if weight == "normal":
+        return (FONT_FAMILY, size)
+    return (FONT_FAMILY, size, weight)
 
 VIEW_LABELS = {
     "all": "全部",
@@ -49,7 +57,7 @@ class DesktopApp(ctk.CTk):
         ctk.set_default_color_theme("green")
         init_db()
 
-        self.title("筛图魔方")
+        self.title(APP_NAME)
         self.geometry("1320x860")
         self.minsize(1080, 720)
         self.configure(fg_color="#edf1f5")
@@ -82,22 +90,22 @@ class DesktopApp(ctk.CTk):
 
         brand = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         brand.grid(row=0, column=0, sticky="ew", padx=18, pady=(20, 14))
-        mark = ctk.CTkLabel(brand, text="筛", width=42, height=42, corner_radius=10, fg_color="#11a77a", text_color="white", font=("Microsoft YaHei UI", 18, "bold"))
+        mark = ctk.CTkLabel(brand, text="筛", width=42, height=42, corner_radius=10, fg_color="#11a77a", text_color="white", font=ui_font(18, "bold"))
         mark.pack(side="left", padx=(0, 12))
         text_box = ctk.CTkFrame(brand, fg_color="transparent")
         text_box.pack(side="left", fill="x", expand=True)
-        ctk.CTkLabel(text_box, text="筛图魔方", text_color="#f8fafc", anchor="w", font=("Microsoft YaHei UI", 20, "bold")).pack(fill="x")
-        ctk.CTkLabel(text_box, text="Windows 桌面筛图工具", text_color="#9ca3af", anchor="w", font=("Microsoft YaHei UI", 12)).pack(fill="x")
+        ctk.CTkLabel(text_box, text=APP_NAME, text_color="#f8fafc", anchor="w", font=ui_font(20, "bold")).pack(fill="x")
+        ctk.CTkLabel(text_box, text="Windows 桌面筛图工具", text_color="#9ca3af", anchor="w", font=ui_font(12)).pack(fill="x")
 
         settings = ctk.CTkFrame(self.sidebar, corner_radius=12, fg_color="#182235")
         settings.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 12))
         settings.grid_columnconfigure(0, weight=1)
         self._path_picker(settings, "原图文件夹", self.source_var, 0, self.pick_source)
         self._path_picker(settings, "输出文件夹", self.output_var, 2, self.pick_output)
-        ctk.CTkLabel(settings, text="相似严格度", text_color="#cbd5e1", anchor="w").grid(row=4, column=0, sticky="ew", padx=12, pady=(10, 2))
+        ctk.CTkLabel(settings, text="相似严格度", text_color="#cbd5e1", anchor="w", font=ui_font(12)).grid(row=4, column=0, sticky="ew", padx=12, pady=(10, 2))
         ctk.CTkSlider(settings, from_=0, to=16, variable=self.threshold_var, number_of_steps=16).grid(row=5, column=0, sticky="ew", padx=12)
-        ctk.CTkSwitch(settings, text="包含子文件夹", variable=self.recursive_var, text_color="#cbd5e1").grid(row=6, column=0, sticky="w", padx=12, pady=(10, 10))
-        self.scan_button = ctk.CTkButton(settings, text="开始筛选", height=40, corner_radius=8, fg_color="#11a77a", hover_color="#0d8060", command=self.scan_async)
+        ctk.CTkSwitch(settings, text="包含子文件夹", variable=self.recursive_var, text_color="#cbd5e1", font=ui_font(12)).grid(row=6, column=0, sticky="w", padx=12, pady=(10, 10))
+        self.scan_button = ctk.CTkButton(settings, text="开始筛选", height=40, corner_radius=8, fg_color="#11a77a", hover_color="#0d8060", font=ui_font(13, "bold"), command=self.scan_async)
         self.scan_button.grid(row=7, column=0, sticky="ew", padx=12, pady=(0, 12))
 
         self.nav_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -119,10 +127,10 @@ class DesktopApp(ctk.CTk):
             ("打开输出", self.open_output),
         ]
         for index, (text, command) in enumerate(actions):
-            button = ctk.CTkButton(export_frame, text=text, height=34, corner_radius=8, fg_color="#f8fafc", hover_color="#e2e8f0", text_color="#111827", command=command)
+            button = ctk.CTkButton(export_frame, text=text, height=34, corner_radius=8, fg_color="#f8fafc", hover_color="#e2e8f0", text_color="#111827", font=ui_font(12), command=command)
             button.grid(row=index // 2, column=index % 2, sticky="ew", padx=(10 if index % 2 == 0 else 4, 10 if index % 2 == 1 else 4), pady=(10 if index < 2 else 4, 6))
 
-        self.side_status = ctk.CTkLabel(self.sidebar, text="准备就绪", height=52, corner_radius=10, fg_color="#1f2a3d", text_color="#dbeafe", anchor="w", justify="left", wraplength=244, padx=12)
+        self.side_status = ctk.CTkLabel(self.sidebar, text="准备就绪", height=52, corner_radius=10, fg_color="#1f2a3d", text_color="#dbeafe", anchor="w", justify="left", wraplength=244, padx=12, font=ui_font(12))
         self.side_status.grid(row=4, column=0, sticky="ew", padx=16, pady=(0, 12))
         self.sidebar.grid_rowconfigure(5, weight=1)
 
@@ -134,28 +142,28 @@ class DesktopApp(ctk.CTk):
         header = ctk.CTkFrame(self.main, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=22, pady=(22, 12))
         header.grid_columnconfigure(0, weight=1)
-        self.title_label = ctk.CTkLabel(header, text="全部", text_color="#111827", anchor="w", font=("Microsoft YaHei UI", 28, "bold"))
+        self.title_label = ctk.CTkLabel(header, text="全部", text_color="#111827", anchor="w", font=ui_font(26, "bold"))
         self.title_label.grid(row=0, column=0, sticky="w")
-        search = ctk.CTkEntry(header, textvariable=self.search_var, width=320, height=36, corner_radius=8, placeholder_text="搜索文件名")
+        search = ctk.CTkEntry(header, textvariable=self.search_var, width=320, height=36, corner_radius=8, placeholder_text="搜索文件名", font=ui_font(13))
         search.grid(row=0, column=1, sticky="e")
         search.bind("<KeyRelease>", lambda _event: self.load_content())
 
         self.stats_frame = ctk.CTkFrame(self.main, fg_color="transparent")
         self.stats_frame.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 8))
 
-        self.status_label = ctk.CTkLabel(self.main, text="", text_color="#64748b", anchor="w")
+        self.status_label = ctk.CTkLabel(self.main, text="", text_color="#64748b", anchor="w", font=ui_font(12))
         self.status_label.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 8))
 
         self.grid_container = ctk.CTkScrollableFrame(self.main, corner_radius=0, fg_color="#edf1f5")
         self.grid_container.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 16))
 
     def _path_picker(self, parent: ctk.CTkFrame, label: str, variable: StringVar, row: int, command) -> None:
-        ctk.CTkLabel(parent, text=label, text_color="#cbd5e1", anchor="w").grid(row=row, column=0, sticky="ew", padx=12, pady=(12 if row == 0 else 8, 4))
+        ctk.CTkLabel(parent, text=label, text_color="#cbd5e1", anchor="w", font=ui_font(12)).grid(row=row, column=0, sticky="ew", padx=12, pady=(12 if row == 0 else 8, 4))
         line = ctk.CTkFrame(parent, fg_color="transparent")
         line.grid(row=row + 1, column=0, sticky="ew", padx=12)
         line.grid_columnconfigure(0, weight=1)
-        ctk.CTkEntry(line, textvariable=variable, height=34, corner_radius=8).grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        ctk.CTkButton(line, text="选择", width=64, height=34, corner_radius=8, fg_color="#334155", hover_color="#475569", command=command).grid(row=0, column=1)
+        ctk.CTkEntry(line, textvariable=variable, height=34, corner_radius=8, font=ui_font(12)).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(line, text="选择", width=64, height=34, corner_radius=8, fg_color="#334155", hover_color="#475569", font=ui_font(12), command=command).grid(row=0, column=1)
 
     def _render_nav(self) -> None:
         for child in self.nav_frame.winfo_children():
@@ -171,6 +179,7 @@ class DesktopApp(ctk.CTk):
                 fg_color="#263244" if active else "transparent",
                 hover_color="#263244",
                 text_color="#ffffff" if active else "#cbd5e1",
+                font=ui_font(13),
                 command=lambda value=view: self.set_view(value),
             )
             button.grid(row=index, column=0, sticky="ew", pady=2)
@@ -258,7 +267,7 @@ class DesktopApp(ctk.CTk):
                 text_color="#111827",
                 border_width=1,
                 border_color="#97dac3" if active else "#dbe3ec",
-                font=("Microsoft YaHei UI", 13, "bold"),
+                font=ui_font(13, "bold"),
                 command=lambda value=view: self.set_view(value),
             )
             card.grid(row=0, column=column, sticky="ew", padx=(0, 8))
@@ -343,23 +352,23 @@ class DesktopApp(ctk.CTk):
         variable = BooleanVar(value=image_id in self.checked_ids)
         self.check_vars[image_id] = variable
         ctk.CTkCheckBox(header, text="", width=24, variable=variable, command=lambda value=image_id: self.toggle_checked(value)).pack(side="left")
-        ctk.CTkLabel(header, text=STATUS_LABELS.get(status, status), width=48, height=24, corner_radius=6, fg_color=STATUS_COLORS.get(status, "#64748b"), text_color="white", font=("Microsoft YaHei UI", 11, "bold")).pack(side="right")
+        ctk.CTkLabel(header, text=STATUS_LABELS.get(status, status), width=48, height=24, corner_radius=6, fg_color=STATUS_COLORS.get(status, "#64748b"), text_color="white", font=ui_font(11, "bold")).pack(side="right")
 
         photo = self._load_thumb(image_id)
         image_label = ctk.CTkLabel(card, text="", image=photo, height=132)
         image_label.pack(fill="x", padx=10)
         image_label.bind("<Double-Button-1>", lambda _event, value=row: self.open_original(value))
 
-        ctk.CTkLabel(card, text=str(row["name"]), text_color="#111827", anchor="w", justify="left", wraplength=184, font=("Microsoft YaHei UI", 12, "bold")).pack(fill="x", padx=10, pady=(8, 0))
+        ctk.CTkLabel(card, text=str(row["name"]), text_color="#111827", anchor="w", justify="left", wraplength=184, font=ui_font(12, "bold")).pack(fill="x", padx=10, pady=(8, 0))
         stars = "★" * int(row.get("star_rating") or 0)
-        ctk.CTkLabel(card, text=f"{stars or '未评分'}  分数 {round(float(row.get('quality_score') or 0))}", text_color="#64748b", anchor="w", font=("Microsoft YaHei UI", 11)).pack(fill="x", padx=10, pady=(2, 0))
+        ctk.CTkLabel(card, text=f"{stars or '未评分'}  分数 {round(float(row.get('quality_score') or 0))}", text_color="#64748b", anchor="w", font=ui_font(11)).pack(fill="x", padx=10, pady=(2, 0))
         tags = str(row.get("tags") or "无标签")
-        ctk.CTkLabel(card, text=tags, text_color="#64748b", anchor="w", wraplength=184, font=("Microsoft YaHei UI", 11)).pack(fill="x", padx=10, pady=(0, 8))
+        ctk.CTkLabel(card, text=tags, text_color="#64748b", anchor="w", wraplength=184, font=ui_font(11)).pack(fill="x", padx=10, pady=(0, 8))
 
         buttons = ctk.CTkFrame(card, fg_color="transparent")
         buttons.pack(fill="x", padx=8, pady=(0, 8))
         for column, (status_key, label) in enumerate(STATUS_LABELS.items()):
-            button = ctk.CTkButton(buttons, text=label, width=44, height=28, corner_radius=7, fg_color="#eef2f7", hover_color="#dbe3ec", text_color="#111827", font=("Microsoft YaHei UI", 11), command=lambda image_id=image_id, status_key=status_key: self.update_status(image_id, status_key))
+            button = ctk.CTkButton(buttons, text=label, width=44, height=28, corner_radius=7, fg_color="#eef2f7", hover_color="#dbe3ec", text_color="#111827", font=ui_font(11), command=lambda image_id=image_id, status_key=status_key: self.update_status(image_id, status_key))
             button.grid(row=0, column=column, sticky="ew", padx=2)
             buttons.grid_columnconfigure(column, weight=1)
         return card
@@ -535,4 +544,3 @@ class DesktopApp(ctk.CTk):
 def main() -> None:
     app = DesktopApp()
     app.mainloop()
-

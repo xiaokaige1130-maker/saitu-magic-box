@@ -24,7 +24,7 @@ body {
   margin: 0;
   color: var(--ink);
   background: var(--bg);
-  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
 }
 
 .shell {

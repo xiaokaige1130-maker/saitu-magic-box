@@ -1,6 +1,6 @@
 Set-Location $PSScriptRoot
 
-$appName = "晒图魔方"
+$appName = "筛图魔术盒"
 
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller

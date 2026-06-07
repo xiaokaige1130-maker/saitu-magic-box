@@ -21,7 +21,7 @@ from .scanner import RAW_EXTS, scan_folder
 
 
 DEFAULT_FOLDER = r"C:\Users\云电脑\Desktop\白底图\外贸绞肉机图"
-DEFAULT_OUTPUT_FOLDER = r"C:\Users\云电脑\Desktop\晒图魔方输出"
+DEFAULT_OUTPUT_FOLDER = r"C:\Users\云电脑\Desktop\筛图魔术盒输出"
 
 REVIEW_LABELS = {
     "selected": "精选",
@@ -41,7 +41,7 @@ REASON_LABELS = {
     "similar_group": "视觉相似图片",
 }
 
-app = FastAPI(title="Image Cube", version="0.2.0")
+app = FastAPI(title="筛图魔术盒", version="0.2.0")
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
