@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>晒图魔方</title>
+    <link rel="stylesheet" href="/static/styles.css?v=2">
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">IC</div>
+          <div>
+            <h1>晒图魔方</h1>
+            <p>本地图片整理工作台</p>
+          </div>
+        </div>
+        <label class="field">
+          <span>原图文件夹</span>
+          <textarea id="folderInput" rows="4">{{ default_folder }}</textarea>
+        </label>
+        <button id="pickFolderBtn">选择原图文件夹</button>
+        <label class="field">
+          <span>输出文件夹</span>
+          <textarea id="outputInput" rows="3">{{ default_output_folder }}</textarea>
+        </label>
+        <div class="button-row">
+          <button id="pickOutputBtn">选择输出</button>
+          <button id="openOutputBtn">打开输出</button>
+        </div>
+        <label class="range-field">
+          <span>相似严格度 <b id="thresholdText">5</b></span>
+          <input id="thresholdInput" type="range" min="0" max="16" value="5">
+          <small>数值越小越严格，误判更少；数值越大找得更多。</small>
+        </label>
+        <label class="check-field">
+          <input id="recursiveInput" type="checkbox">
+          <span>包含子文件夹</span>
+        </label>
+        <button id="scanBtn" class="primary">扫描图片</button>
+        <div id="sideStatus" class="side-status">准备就绪</div>
+        <button id="copyCandidatesBtn">复制处理候选</button>
+        <button id="copyKeepersBtn">复制保留建议</button>
+        <a class="secondary" href="/api/export.csv">导出表格</a>
+        <nav class="nav">
+          <button data-view="all" class="active">全部图片</button>
+          <button data-view="exact">完全重复</button>
+          <button data-view="name">文件名副本</button>
+          <button data-view="similar">相似图片</button>
+          <button data-view="weak">低质量</button>
+          <button data-view="recommend">处理候选</button>
+        </nav>
+      </aside>
+      <main class="workspace">
+        <header class="toolbar">
+          <div class="stats" id="statsBar"></div>
+          <input id="searchInput" placeholder="搜索文件名">
+        </header>
+        <section id="categoryBar" class="category-bar"></section>
+        <section id="status" class="status"></section>
+        <section id="content" class="content-grid"></section>
+      </main>
+    </div>
+    <div id="busyOverlay" class="busy-overlay hidden">
+      <div class="busy-card">
+        <div class="spinner"></div>
+        <strong>正在扫描图片</strong>
+        <span>图片多时需要几十秒，请不要关闭窗口。</span>
+      </div>
+    </div>
+    <script src="/static/app.js?v=2"></script>
+  </body>
+</html>
