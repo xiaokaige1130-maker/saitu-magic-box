@@ -16,9 +16,9 @@ from .db import THUMBS_DIR, connect, init_db, row_to_dict
 from .scanner import scan_folder
 
 
-DEFAULT_FOLDER = r"C:\Users\云电脑\Desktop\白底图\外贸绞肉机图"
 APP_NAME = "筛图魔术盒"
-DEFAULT_OUTPUT_FOLDER = rf"C:\Users\云电脑\Desktop\{APP_NAME}输出"
+DEFAULT_FOLDER = str(Path.home() / "Pictures")
+DEFAULT_OUTPUT_FOLDER = str(Path.home() / "Desktop" / f"{APP_NAME}输出")
 FONT_FAMILY = "Microsoft YaHei"
 
 

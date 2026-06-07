@@ -20,8 +20,9 @@ from .db import BASE_DIR, THUMBS_DIR, connect, init_db, row_to_dict
 from .scanner import RAW_EXTS, scan_folder
 
 
-DEFAULT_FOLDER = r"C:\Users\云电脑\Desktop\白底图\外贸绞肉机图"
-DEFAULT_OUTPUT_FOLDER = r"C:\Users\云电脑\Desktop\筛图魔术盒输出"
+APP_NAME = "筛图魔术盒"
+DEFAULT_FOLDER = str(Path.home() / "Pictures")
+DEFAULT_OUTPUT_FOLDER = str(Path.home() / "Desktop" / f"{APP_NAME}输出")
 
 REVIEW_LABELS = {
     "selected": "精选",
@@ -41,7 +42,7 @@ REASON_LABELS = {
     "similar_group": "视觉相似图片",
 }
 
-app = FastAPI(title="筛图魔术盒", version="0.2.0")
+app = FastAPI(title=APP_NAME, version="1.0.0")
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
