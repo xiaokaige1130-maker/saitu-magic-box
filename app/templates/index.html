@@ -3,72 +3,107 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>晒图魔方</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2">
+    <title>筛图魔方</title>
+    <link rel="stylesheet" href="/static/styles.css?v=3">
   </head>
   <body>
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">IC</div>
+          <div class="brand-mark">筛</div>
           <div>
-            <h1>晒图魔方</h1>
-            <p>本地图片整理工作台</p>
+            <h1>筛图魔方</h1>
+            <p>摄影师本地筛图工作台</p>
           </div>
         </div>
-        <label class="field">
-          <span>原图文件夹</span>
-          <textarea id="folderInput" rows="4">{{ default_folder }}</textarea>
-        </label>
-        <button id="pickFolderBtn">选择原图文件夹</button>
-        <label class="field">
-          <span>输出文件夹</span>
-          <textarea id="outputInput" rows="3">{{ default_output_folder }}</textarea>
-        </label>
-        <div class="button-row">
-          <button id="pickOutputBtn">选择输出</button>
-          <button id="openOutputBtn">打开输出</button>
-        </div>
-        <label class="range-field">
-          <span>相似严格度 <b id="thresholdText">5</b></span>
-          <input id="thresholdInput" type="range" min="0" max="16" value="5">
-          <small>数值越小越严格，误判更少；数值越大找得更多。</small>
-        </label>
-        <label class="check-field">
-          <input id="recursiveInput" type="checkbox">
-          <span>包含子文件夹</span>
-        </label>
-        <button id="scanBtn" class="primary">扫描图片</button>
-        <div id="sideStatus" class="side-status">准备就绪</div>
-        <button id="copyCandidatesBtn">复制处理候选</button>
-        <button id="copyKeepersBtn">复制保留建议</button>
-        <a class="secondary" href="/api/export.csv">导出表格</a>
-        <nav class="nav">
-          <button data-view="all" class="active">全部图片</button>
-          <button data-view="exact">完全重复</button>
-          <button data-view="name">文件名副本</button>
-          <button data-view="similar">相似图片</button>
-          <button data-view="weak">低质量</button>
-          <button data-view="recommend">处理候选</button>
+
+        <nav class="nav" aria-label="主视图">
+          <button data-view="all" class="active">我的主页</button>
+          <button data-view="recommend">推荐选优</button>
+          <button data-view="selected">精选照片</button>
+          <button data-view="weak">较差照片</button>
+          <button data-view="empty">空镜照片</button>
+          <button data-view="waste">废片照片</button>
+          <button data-view="duplicate">重复/相似</button>
         </nav>
+
+        <div class="panel compact">
+          <label class="field">
+            <span>原图文件夹</span>
+            <textarea id="folderInput" rows="3">{{ default_folder }}</textarea>
+          </label>
+          <button id="pickFolderBtn">选择文件夹</button>
+
+          <label class="field">
+            <span>输出文件夹</span>
+            <textarea id="outputInput" rows="2">{{ default_output_folder }}</textarea>
+          </label>
+          <div class="button-row">
+            <button id="pickOutputBtn">选择输出</button>
+            <button id="openOutputBtn">打开输出</button>
+          </div>
+
+          <label class="range-field">
+            <span>相似严格度 <b id="thresholdText">5</b></span>
+            <input id="thresholdInput" type="range" min="0" max="16" value="5">
+          </label>
+          <label class="check-field">
+            <input id="recursiveInput" type="checkbox">
+            <span>包含子文件夹</span>
+          </label>
+          <button id="scanBtn" class="primary">开始筛选</button>
+          <div id="sideStatus" class="side-status">准备就绪</div>
+        </div>
+
+        <div class="panel compact">
+          <button id="copySelectedBtn">复制精选</button>
+          <button id="copyWasteBtn">复制废片</button>
+          <button id="copyCandidatesBtn">复制重复候选</button>
+          <button id="copyKeepersBtn">复制组内最佳</button>
+          <button id="organizeBtn">按分类整理</button>
+          <button id="xmpBtn">生成 XMP</button>
+          <a class="secondary" href="/api/export.csv">导出 CSV</a>
+        </div>
       </aside>
+
       <main class="workspace">
-        <header class="toolbar">
-          <div class="stats" id="statsBar"></div>
-          <input id="searchInput" placeholder="搜索文件名">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">AI 筛图已连接</div>
+            <h2 id="viewTitle">我的主页</h2>
+          </div>
+          <div class="top-actions">
+            <input id="searchInput" placeholder="搜索文件名">
+          </div>
         </header>
-        <section id="categoryBar" class="category-bar"></section>
+
+        <section id="summaryCards" class="summary-grid"></section>
+
+        <section class="filter-strip">
+          <div id="percentBar" class="segmented">
+            <button data-percent="100" class="active">全部</button>
+            <button data-percent="10">10%</button>
+            <button data-percent="20">20%</button>
+            <button data-percent="50">50%</button>
+            <button data-percent="80">80%</button>
+          </div>
+          <div id="categoryBar" class="category-bar"></div>
+        </section>
+
+        <section id="tagBar" class="tag-bar"></section>
         <section id="status" class="status"></section>
         <section id="content" class="content-grid"></section>
       </main>
     </div>
+
     <div id="busyOverlay" class="busy-overlay hidden">
       <div class="busy-card">
         <div class="spinner"></div>
-        <strong>正在扫描图片</strong>
-        <span>图片多时需要几十秒，请不要关闭窗口。</span>
+        <strong>正在 AI 筛图</strong>
+        <span>正在分析清晰度、曝光、重复图和推荐优先级。</span>
       </div>
     </div>
-    <script src="/static/app.js?v=2"></script>
+
+    <script src="/static/app.js?v=3"></script>
   </body>
 </html>

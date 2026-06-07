@@ -6,7 +6,9 @@ import io
 import os
 import shutil
 import subprocess
+from html import escape
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -15,13 +17,31 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from .db import BASE_DIR, THUMBS_DIR, connect, init_db, row_to_dict
-from .scanner import scan_folder
+from .scanner import RAW_EXTS, scan_folder
 
 
 DEFAULT_FOLDER = r"C:\Users\云电脑\Desktop\白底图\外贸绞肉机图"
 DEFAULT_OUTPUT_FOLDER = r"C:\Users\云电脑\Desktop\晒图魔方输出"
 
-app = FastAPI(title="Image Cube", version="0.1.0")
+REVIEW_LABELS = {
+    "selected": "精选",
+    "weak": "较差",
+    "empty": "空镜",
+    "waste": "废片",
+}
+REVIEW_ORDER = {
+    "selected": 0,
+    "weak": 1,
+    "empty": 2,
+    "waste": 3,
+}
+REASON_LABELS = {
+    "exact_group": "完全相同文件",
+    "name_group": "文件名副本",
+    "similar_group": "视觉相似图片",
+}
+
+app = FastAPI(title="Image Cube", version="0.2.0")
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
@@ -34,7 +54,7 @@ class ScanRequest(BaseModel):
 
 class CopyRequest(BaseModel):
     folder: str = DEFAULT_OUTPUT_FOLDER
-    mode: str = "candidates"
+    mode: str = "selected"
 
 
 class FolderRequest(BaseModel):
@@ -46,11 +66,15 @@ class PickFolderRequest(BaseModel):
     title: str = "选择文件夹"
 
 
-REASON_LABELS = {
-    "exact_group": "完全相同文件",
-    "name_group": "文件名副本",
-    "similar_group": "视觉相似图片",
-}
+class LabelRequest(BaseModel):
+    review_status: str | None = None
+    star_rating: int | None = None
+    tags: list[str] | None = None
+
+
+class XmpRequest(BaseModel):
+    folder: str = DEFAULT_OUTPUT_FOLDER
+    mode: str = "selected"
 
 
 @app.on_event("startup")
@@ -90,10 +114,35 @@ def stats() -> dict[str, object]:
     with connect() as conn:
         total = conn.execute("SELECT COUNT(*) FROM images").fetchone()[0]
         categories = [dict(row) for row in conn.execute("SELECT category, COUNT(*) count FROM images GROUP BY category ORDER BY count DESC")]
+        statuses = {
+            row["review_status"]: row["count"]
+            for row in conn.execute("SELECT review_status, COUNT(*) count FROM images GROUP BY review_status")
+        }
+        stars = {
+            int(row["star_rating"]): row["count"]
+            for row in conn.execute("SELECT star_rating, COUNT(*) count FROM images GROUP BY star_rating")
+        }
+        rows = conn.execute("SELECT tags FROM images WHERE tags != ''").fetchall()
         exact = conn.execute("SELECT COUNT(DISTINCT exact_group) FROM images WHERE exact_group != ''").fetchone()[0]
         names = conn.execute("SELECT COUNT(DISTINCT name_group) FROM images WHERE name_group != ''").fetchone()[0]
         similar = conn.execute("SELECT COUNT(DISTINCT similar_group) FROM images WHERE similar_group != ''").fetchone()[0]
-    return {"total": total, "categories": categories, "exact_groups": exact, "name_groups": names, "similar_groups": similar}
+        selected_count = conn.execute("SELECT COUNT(*) FROM images WHERE review_status = 'selected'").fetchone()[0]
+    tag_counts: dict[str, int] = {}
+    for row in rows:
+        for tag in str(row["tags"]).split(","):
+            if tag:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+    return {
+        "total": total,
+        "categories": categories,
+        "statuses": {key: int(statuses.get(key, 0)) for key in REVIEW_LABELS},
+        "stars": stars,
+        "tags": [{"tag": key, "count": value} for key, value in sorted(tag_counts.items(), key=lambda item: item[1], reverse=True)],
+        "exact_groups": exact,
+        "name_groups": names,
+        "similar_groups": similar,
+        "selected_count": selected_count,
+    }
 
 
 @app.get("/api/images")
@@ -101,24 +150,41 @@ def images(
     view: str = "all",
     category: str = "",
     q: str = "",
-    limit: int = Query(500, ge=1, le=2000),
+    tag: str = "",
+    min_stars: int = Query(0, ge=0, le=5),
+    recommend_percent: int = Query(100, ge=1, le=100),
+    limit: int = Query(800, ge=1, le=3000),
 ) -> list[dict[str, object]]:
-    clauses = []
+    if view == "recommend":
+        return recommend_images(recommend_percent, category=category, q=q, limit=limit)
+
+    clauses: list[str] = []
     params: list[object] = []
-    if view == "exact":
+    if view in REVIEW_LABELS:
+        clauses.append("review_status = ?")
+        params.append(view)
+    elif view == "exact":
         clauses.append("exact_group != ''")
     elif view == "name":
         clauses.append("name_group != ''")
     elif view == "similar":
         clauses.append("similar_group != ''")
+    elif view == "duplicate":
+        clauses.append("(exact_group != '' OR name_group != '' OR similar_group != '')")
     elif view == "weak":
-        clauses.append("blur_score < 220")
+        clauses.append("review_status = 'weak'")
     if category:
         clauses.append("category = ?")
         params.append(category)
     if q:
         clauses.append("name LIKE ?")
         params.append(f"%{q}%")
+    if tag:
+        clauses.append("tags LIKE ?")
+        params.append(f"%{tag}%")
+    if min_stars:
+        clauses.append("star_rating >= ?")
+        params.append(min_stars)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     with connect() as conn:
         rows = conn.execute(
@@ -126,14 +192,43 @@ def images(
             SELECT * FROM images
             {where}
             ORDER BY
-                CASE WHEN exact_group != '' THEN 0 ELSE 1 END,
-                CASE WHEN name_group != '' THEN 0 ELSE 1 END,
+                CASE review_status
+                    WHEN 'selected' THEN 0
+                    WHEN 'weak' THEN 1
+                    WHEN 'empty' THEN 2
+                    WHEN 'waste' THEN 3
+                    ELSE 4
+                END,
+                quality_score DESC,
                 name COLLATE NOCASE
             LIMIT ?
             """,
             (*params, limit),
         ).fetchall()
     return [row_to_dict(row) for row in rows]
+
+
+def recommend_images(percent: int, category: str = "", q: str = "", limit: int = 800) -> list[dict[str, object]]:
+    clauses = ["review_status = 'selected'"]
+    params: list[object] = []
+    if category:
+        clauses.append("category = ?")
+        params.append(category)
+    if q:
+        clauses.append("name LIKE ?")
+        params.append(f"%{q}%")
+    where = f"WHERE {' AND '.join(clauses)}"
+    with connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT * FROM images
+            {where}
+            ORDER BY quality_score DESC, star_rating DESC, size_bytes DESC
+            """,
+            params,
+        ).fetchall()
+    count = min(limit, max(1, round(len(rows) * percent / 100))) if rows else 0
+    return [row_to_dict(row) for row in rows[:count]]
 
 
 @app.get("/api/recommendations")
@@ -176,29 +271,125 @@ def recommendations() -> dict[str, object]:
     return {"keepers": keepers, "duplicate_candidates": duplicate_candidates}
 
 
-@app.post("/api/copy")
-def copy_recommendations(request: CopyRequest) -> dict[str, object]:
-    data = recommendations()
-    if request.mode == "keepers":
-        items = data["keepers"]
-        subfolder = "保留建议"
-    elif request.mode == "candidates":
-        items = data["duplicate_candidates"]
-        subfolder = "处理候选"
-    else:
-        raise HTTPException(status_code=400, detail="unknown copy mode")
+@app.post("/api/images/{image_id}/label")
+def label_image(image_id: int, request: LabelRequest) -> dict[str, object]:
+    updates: list[str] = []
+    params: list[object] = []
+    if request.review_status is not None:
+        if request.review_status not in REVIEW_LABELS:
+            raise HTTPException(status_code=400, detail="unknown review status")
+        updates.append("review_status = ?")
+        params.append(request.review_status)
+    if request.star_rating is not None:
+        updates.append("star_rating = ?")
+        params.append(max(1, min(5, int(request.star_rating))))
+    if request.tags is not None:
+        clean_tags = [tag.strip() for tag in request.tags if tag.strip()]
+        updates.append("tags = ?")
+        params.append(",".join(dict.fromkeys(clean_tags)))
+    if not updates:
+        raise HTTPException(status_code=400, detail="nothing to update")
+    params.append(image_id)
+    with connect() as conn:
+        cursor = conn.execute(f"UPDATE images SET {', '.join(updates)} WHERE id = ?", params)
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="image not found")
+        row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+    return row_to_dict(row)
 
+
+@app.post("/api/copy")
+def copy_items(request: CopyRequest) -> dict[str, object]:
+    items, subfolder = items_for_mode(request.mode)
     target = Path(request.folder).expanduser().resolve() / subfolder
     target.mkdir(parents=True, exist_ok=True)
+    copied = copy_files(items, target)
+    return {"copied": copied, "target": str(target)}
+
+
+@app.post("/api/organize")
+def organize_items(request: FolderRequest) -> dict[str, object]:
+    target = Path(request.folder).expanduser().resolve() / "按分类整理"
+    counts: dict[str, int] = {}
+    with connect() as conn:
+        for status, label in REVIEW_LABELS.items():
+            rows = [row_to_dict(row) for row in conn.execute("SELECT * FROM images WHERE review_status = ? ORDER BY quality_score DESC", (status,))]
+            folder = target / label
+            copied = copy_files(rows, folder)
+            counts[label] = copied
+    return {"target": str(target), "counts": counts}
+
+
+@app.post("/api/xmp")
+def generate_xmp(request: XmpRequest) -> dict[str, object]:
+    items, subfolder = items_for_mode(request.mode)
+    target = Path(request.folder).expanduser().resolve() / f"{subfolder}_XMP"
+    target.mkdir(parents=True, exist_ok=True)
+    written = 0
+    for item in items:
+        source = Path(str(item["path"]))
+        if not source.exists():
+            continue
+        sidecar_name = source.with_suffix(".xmp").name if source.suffix.lower() in RAW_EXTS else f"{source.name}.xmp"
+        (target / sidecar_name).write_text(xmp_content(item), encoding="utf-8")
+        written += 1
+    return {"written": written, "target": str(target)}
+
+
+def items_for_mode(mode: str) -> tuple[list[dict[str, Any]], str]:
+    if mode in {"keepers", "candidates"}:
+        data = recommendations()
+        if mode == "keepers":
+            return list(data["keepers"]), "保留建议"
+        return list(data["duplicate_candidates"]), "处理候选"
+    if mode == "all":
+        with connect() as conn:
+            rows = [row_to_dict(row) for row in conn.execute("SELECT * FROM images ORDER BY quality_score DESC")]
+        return rows, "全部图片"
+    if mode not in REVIEW_LABELS:
+        raise HTTPException(status_code=400, detail="unknown copy mode")
+    with connect() as conn:
+        rows = [
+            row_to_dict(row)
+            for row in conn.execute("SELECT * FROM images WHERE review_status = ? ORDER BY quality_score DESC, name COLLATE NOCASE", (mode,))
+        ]
+    return rows, REVIEW_LABELS[mode]
+
+
+def copy_files(items: list[dict[str, Any]], target: Path) -> int:
+    target.mkdir(parents=True, exist_ok=True)
     copied = 0
-    for item in items:  # type: ignore[assignment]
+    for item in items:
         source = Path(str(item["path"]))
         if not source.exists():
             continue
         prefix = f"{int(item['id']):04d}_"
         shutil.copy2(source, target / f"{prefix}{source.name}")
         copied += 1
-    return {"copied": copied, "target": str(target)}
+    return copied
+
+
+def xmp_content(item: dict[str, Any]) -> str:
+    label = REVIEW_LABELS.get(str(item.get("review_status", "")), "")
+    rating = max(0, min(5, int(item.get("star_rating") or 0)))
+    tags = [tag for tag in str(item.get("tags") or "").split(",") if tag]
+    tag_xml = "".join(f"<rdf:li>{escape(tag)}</rdf:li>" for tag in tags)
+    return f"""<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description rdf:about=""
+      xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+      xmlns:dc="http://purl.org/dc/elements/1.1/"
+      xmp:Rating="{rating}"
+      xmp:Label="{escape(label)}">
+      <dc:subject>
+        <rdf:Bag>{tag_xml}</rdf:Bag>
+      </dc:subject>
+    </rdf:Description>
+  </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>
+"""
 
 
 @app.post("/api/open-folder")
@@ -304,9 +495,47 @@ def original(image_id: int) -> FileResponse:
 def export_csv() -> StreamingResponse:
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "name", "path", "category", "width", "height", "size_bytes", "blur_score", "quality_score", "exact_group", "name_group", "similar_group"])
+    writer.writerow([
+        "id",
+        "name",
+        "path",
+        "category",
+        "review_status",
+        "tags",
+        "star_rating",
+        "width",
+        "height",
+        "size_bytes",
+        "blur_score",
+        "brightness",
+        "contrast",
+        "saturation",
+        "quality_score",
+        "exact_group",
+        "name_group",
+        "similar_group",
+    ])
     with connect() as conn:
         for row in conn.execute("SELECT * FROM images ORDER BY name COLLATE NOCASE"):
-            writer.writerow([row["id"], row["name"], row["path"], row["category"], row["width"], row["height"], row["size_bytes"], row["blur_score"], row["quality_score"], row["exact_group"], row["name_group"], row["similar_group"]])
+            writer.writerow([
+                row["id"],
+                row["name"],
+                row["path"],
+                row["category"],
+                row["review_status"],
+                row["tags"],
+                row["star_rating"],
+                row["width"],
+                row["height"],
+                row["size_bytes"],
+                row["blur_score"],
+                row["brightness"],
+                row["contrast"],
+                row["saturation"],
+                row["quality_score"],
+                row["exact_group"],
+                row["name_group"],
+                row["similar_group"],
+            ])
     output.seek(0)
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=image-cube-report.csv"})

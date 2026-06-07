@@ -39,8 +39,14 @@ def init_db() -> None:
                 sha256 TEXT NOT NULL,
                 dhash TEXT NOT NULL,
                 blur_score REAL NOT NULL,
+                brightness REAL NOT NULL DEFAULT 0,
+                contrast REAL NOT NULL DEFAULT 0,
+                saturation REAL NOT NULL DEFAULT 0,
                 quality_score REAL NOT NULL,
                 category TEXT NOT NULL,
+                review_status TEXT NOT NULL DEFAULT 'selected',
+                tags TEXT NOT NULL DEFAULT '',
+                star_rating INTEGER NOT NULL DEFAULT 0,
                 exact_group TEXT NOT NULL DEFAULT '',
                 name_group TEXT NOT NULL DEFAULT '',
                 similar_group TEXT NOT NULL DEFAULT '',
@@ -51,6 +57,19 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_images_sha ON images(sha256)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_images_dhash ON images(dhash)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_images_category ON images(category)")
+        ensure_column(conn, "images", "brightness", "REAL NOT NULL DEFAULT 0")
+        ensure_column(conn, "images", "contrast", "REAL NOT NULL DEFAULT 0")
+        ensure_column(conn, "images", "saturation", "REAL NOT NULL DEFAULT 0")
+        ensure_column(conn, "images", "review_status", "TEXT NOT NULL DEFAULT 'selected'")
+        ensure_column(conn, "images", "tags", "TEXT NOT NULL DEFAULT ''")
+        ensure_column(conn, "images", "star_rating", "INTEGER NOT NULL DEFAULT 0")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_images_review_status ON images(review_status)")
+
+
+def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def row_to_dict(row: sqlite3.Row) -> dict[str, object]:

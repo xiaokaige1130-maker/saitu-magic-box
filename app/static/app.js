@@ -1,8 +1,28 @@
+const REVIEW = {
+  selected: { label: "精选", tone: "good" },
+  weak: { label: "较差", tone: "warn" },
+  empty: { label: "空镜", tone: "info" },
+  waste: { label: "废片", tone: "bad" },
+};
+
+const VIEW_TITLES = {
+  all: "我的主页",
+  recommend: "推荐选优",
+  selected: "精选照片",
+  weak: "较差照片",
+  empty: "空镜照片",
+  waste: "废片照片",
+  duplicate: "重复/相似",
+};
+
 const state = {
   view: "all",
   category: "",
+  tag: "",
   q: "",
+  recommendPercent: 100,
   stats: null,
+  selectedId: null,
 };
 
 const els = {
@@ -12,8 +32,12 @@ const els = {
   pickFolderBtn: document.querySelector("#pickFolderBtn"),
   pickOutputBtn: document.querySelector("#pickOutputBtn"),
   openOutputBtn: document.querySelector("#openOutputBtn"),
+  copySelectedBtn: document.querySelector("#copySelectedBtn"),
+  copyWasteBtn: document.querySelector("#copyWasteBtn"),
   copyCandidatesBtn: document.querySelector("#copyCandidatesBtn"),
   copyKeepersBtn: document.querySelector("#copyKeepersBtn"),
+  organizeBtn: document.querySelector("#organizeBtn"),
+  xmpBtn: document.querySelector("#xmpBtn"),
   thresholdInput: document.querySelector("#thresholdInput"),
   thresholdText: document.querySelector("#thresholdText"),
   recursiveInput: document.querySelector("#recursiveInput"),
@@ -21,10 +45,13 @@ const els = {
   sideStatus: document.querySelector("#sideStatus"),
   busyOverlay: document.querySelector("#busyOverlay"),
   content: document.querySelector("#content"),
-  statsBar: document.querySelector("#statsBar"),
+  summaryCards: document.querySelector("#summaryCards"),
   categoryBar: document.querySelector("#categoryBar"),
+  tagBar: document.querySelector("#tagBar"),
   searchInput: document.querySelector("#searchInput"),
+  viewTitle: document.querySelector("#viewTitle"),
   navButtons: document.querySelectorAll(".nav button"),
+  percentButtons: document.querySelectorAll("#percentBar button"),
 };
 
 function setStatus(text) {
@@ -36,7 +63,7 @@ function setStatus(text) {
 
 function setBusy(isBusy) {
   els.scanBtn.disabled = isBusy;
-  els.scanBtn.textContent = isBusy ? "扫描中..." : "扫描图片";
+  els.scanBtn.textContent = isBusy ? "筛选中..." : "开始筛选";
   els.busyOverlay?.classList.toggle("hidden", !isBusy);
 }
 
@@ -53,37 +80,65 @@ async function api(path, options) {
     }
     throw new Error(message || `HTTP ${response.status}`);
   }
-  return response.json();
+  const contentType = response.headers.get("content-type") || "";
+  return contentType.includes("application/json") ? response.json() : response.text();
 }
 
 async function loadStats() {
   state.stats = await api("/api/stats");
-  renderStats();
+  renderSummary();
   renderCategories();
+  renderTags();
 }
 
-function renderStats() {
+function renderSummary() {
   const stats = state.stats || {};
-  els.statsBar.innerHTML = [
-    ["总数", stats.total || 0],
-    ["完全重复", stats.exact_groups || 0],
-    ["文件名副本", stats.name_groups || 0],
-    ["相似组", stats.similar_groups || 0],
-  ]
-    .map(([label, value]) => `<span class="chip">${label}: ${value}</span>`)
-    .join("");
+  const statuses = stats.statuses || {};
+  const cards = [
+    { view: "all", label: "全部", value: stats.total || 0, sub: "已扫描图片" },
+    { view: "selected", label: "精选", value: statuses.selected || 0, sub: "建议交付/精修" },
+    { view: "weak", label: "较差", value: statuses.weak || 0, sub: "需要复核" },
+    { view: "empty", label: "空镜", value: statuses.empty || 0, sub: "场景/细节" },
+    { view: "waste", label: "废片", value: statuses.waste || 0, sub: "重复或严重问题" },
+  ];
+  els.summaryCards.innerHTML = cards.map((card) => `
+    <button class="summary-card ${state.view === card.view ? "active" : ""}" data-summary-view="${card.view}">
+      <span>${card.label}</span>
+      <strong>${card.value}</strong>
+      <small>${card.sub}</small>
+    </button>
+  `).join("");
+  els.summaryCards.querySelectorAll("[data-summary-view]").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.summaryView || "all"));
+  });
 }
 
 function renderCategories() {
   const categories = state.stats?.categories || [];
   els.categoryBar.innerHTML = `<button data-category="" class="${state.category === "" ? "active" : ""}">全部分类</button>` +
     categories
-      .map((item) => `<button data-category="${item.category}" class="${state.category === item.category ? "active" : ""}">${labelCategory(item.category)} ${item.count}</button>`)
+      .map((item) => `<button data-category="${escapeHtml(item.category)}" class="${state.category === item.category ? "active" : ""}">${labelCategory(item.category)} ${item.count}</button>`)
       .join("");
   els.categoryBar.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
       state.category = button.dataset.category || "";
       renderCategories();
+      loadContent();
+    });
+  });
+}
+
+function renderTags() {
+  const tags = state.stats?.tags || [];
+  const topTags = tags.slice(0, 10);
+  els.tagBar.innerHTML = `<button data-tag="" class="${state.tag === "" ? "active" : ""}">全部标签</button>` +
+    topTags
+      .map((item) => `<button data-tag="${escapeHtml(item.tag)}" class="${state.tag === item.tag ? "active" : ""}">${escapeHtml(item.tag)} ${item.count}</button>`)
+      .join("");
+  els.tagBar.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.tag = button.dataset.tag || "";
+      renderTags();
       loadContent();
     });
   });
@@ -96,94 +151,117 @@ function labelCategory(value) {
     copy_named: "文件名副本",
     legacy_format: "旧格式",
     png_asset: "PNG素材",
-    product_image: "商品图",
+    raw_photo: "RAW照片",
+    tiff_photo: "TIFF照片",
+    photo: "照片",
   }[value] || value;
 }
 
 async function loadContent() {
   setStatus("正在加载...");
-  if (state.view === "recommend") {
-    const data = await api("/api/recommendations");
-    renderRecommendations(data);
-    setStatus(`${data.duplicate_candidates.length} 张处理候选`);
-    return;
-  }
-  if (["exact", "name", "similar"].includes(state.view) && !state.category && !state.q) {
-    const groups = await api(`/api/groups/${state.view}`);
-    renderGroups(groups);
-  setStatus(`${groups.length} 个分组`);
-    return;
-  }
-  const params = new URLSearchParams({ view: state.view, category: state.category, q: state.q });
+  els.viewTitle.textContent = VIEW_TITLES[state.view] || "筛选结果";
+  const params = new URLSearchParams({
+    view: state.view,
+    category: state.category,
+    q: state.q,
+    tag: state.tag,
+    recommend_percent: String(state.recommendPercent),
+  });
   const images = await api(`/api/images?${params.toString()}`);
   renderImages(images);
-  setStatus(`${images.length} 张图片`);
+  const percentText = state.view === "recommend" && state.recommendPercent < 100 ? ` · 前 ${state.recommendPercent}%` : "";
+  setStatus(`${images.length} 张图片${percentText}`);
 }
 
-function renderRecommendations(data) {
+function renderImages(images) {
   els.content.className = "content-grid";
-  const candidates = data.duplicate_candidates || [];
-  if (!candidates.length) {
-    els.content.innerHTML = `<div class="empty">暂无处理候选。先扫描图片，或调高相似严格度后重新扫描。</div>`;
+  if (!images.length) {
+    els.content.innerHTML = `<div class="empty">没有匹配图片。可以换一个筛选条件，或重新开始筛图。</div>`;
     return;
   }
-  els.content.innerHTML = candidates.map((item) => `
-    <article class="image-card">
-      <a href="/image/${item.id}" target="_blank"><img src="/thumb/${item.id}" alt=""></a>
-      <div class="meta">
-        <div class="name">${escapeHtml(item.name)}</div>
-        <div class="sub">处理候选 · 建议保留 #${item.keeper_id}</div>
-        <div class="sub">${item.reason}</div>
-        <div class="badges"><span class="badge warn">处理候选</span><span class="badge">${labelCategory(item.category)}</span></div>
-      </div>
-    </article>
-  `).join("");
+  els.content.innerHTML = images.map((item) => imageCard(item)).join("");
+  els.content.querySelectorAll(".image-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      state.selectedId = Number(card.dataset.id);
+      markSelectedCard();
+    });
+  });
+  els.content.querySelectorAll("[data-status]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      labelImage(Number(button.dataset.id), { review_status: button.dataset.status }).catch((error) => setStatus(error.message));
+    });
+  });
+  els.content.querySelectorAll("[data-star]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      labelImage(Number(button.dataset.id), { star_rating: Number(button.dataset.star) }).catch((error) => setStatus(error.message));
+    });
+  });
 }
 
-function imageCard(item, options = {}) {
-  const role = options.role || "";
-  const badges = [
-    role === "keeper" ? `<span class="badge good">建议保留</span>` : "",
-    role === "candidate" ? `<span class="badge warn">处理候选</span>` : "",
-    item.exact_group ? `<span class="badge warn">完全重复 ${item.exact_group}</span>` : "",
-    item.name_group ? `<span class="badge">文件名副本 ${item.name_group}</span>` : "",
-    item.similar_group ? `<span class="badge">相似 ${item.similar_group}</span>` : "",
-  ].join("");
+function imageCard(item) {
+  const status = REVIEW[item.review_status] || REVIEW.selected;
+  const tags = String(item.tags || "").split(",").filter(Boolean);
+  const starButtons = [1, 2, 3, 4, 5].map((star) => `
+    <button class="star-btn ${Number(item.star_rating) >= star ? "on" : ""}" data-id="${item.id}" data-star="${star}" title="${star} 星">${star}</button>
+  `).join("");
   return `
-    <article class="image-card">
-      <a href="/image/${item.id}" target="_blank"><img src="/thumb/${item.id}" alt=""></a>
+    <article class="image-card ${state.selectedId === Number(item.id) ? "selected" : ""}" data-id="${item.id}">
+      <a class="thumb-link" href="/image/${item.id}" target="_blank"><img src="/thumb/${item.id}" alt=""></a>
       <div class="meta">
+        <div class="card-head">
+          <span class="status-pill ${status.tone}">${status.label}</span>
+          <span class="score">${Math.round(Number(item.quality_score || 0))}</span>
+        </div>
         <div class="name">${escapeHtml(item.name)}</div>
-        <div class="sub">${item.width}x${item.height} · ${formatSize(item.size_bytes)}</div>
-        <div class="sub">blur ${Math.round(item.blur_score)} · score ${Math.round(item.quality_score)}</div>
-        <div class="badges"><span class="badge">${labelCategory(item.category)}</span>${badges}</div>
+        <div class="sub">${item.width}x${item.height} · ${formatSize(item.size_bytes)} · 清晰 ${Math.round(Number(item.blur_score || 0))}</div>
+        <div class="stars">${starButtons}</div>
+        <div class="badges">
+          <span class="badge">${labelCategory(item.category)}</span>
+          ${tags.map((tag) => `<span class="badge ${tagTone(tag)}">${escapeHtml(tag)}</span>`).join("")}
+        </div>
+        <div class="quick-row">
+          <button data-id="${item.id}" data-status="selected">精选</button>
+          <button data-id="${item.id}" data-status="weak">较差</button>
+          <button data-id="${item.id}" data-status="empty">空镜</button>
+          <button data-id="${item.id}" data-status="waste">废片</button>
+        </div>
       </div>
     </article>
   `;
 }
 
-function renderImages(images) {
-  els.content.className = "content-grid";
-  els.content.innerHTML = images.length ? images.map((item) => imageCard(item)).join("") : `<div class="empty">没有匹配图片。</div>`;
+function tagTone(tag) {
+  if (["重复", "严重模糊", "过曝", "欠曝"].includes(tag)) return "bad";
+  if (["模糊", "低反差", "低饱和"].includes(tag)) return "warn";
+  if (["推荐", "组内最佳"].includes(tag)) return "good";
+  return "";
 }
 
-function renderGroups(groups) {
-  els.content.className = "content-grid";
-  if (!groups.length) {
-    els.content.innerHTML = `<div class="empty">暂无分组。可以降低严格度后重新扫描。</div>`;
-    return;
-  }
-  els.content.innerHTML = groups
-    .map((group) => `
-      <section class="group">
-        <div class="group-head">
-          <strong>${group.reason} ${group.group_id}</strong>
-          <span class="sub">${group.count} 张 · 最佳评分 ${Math.round(group.best_score || 0)}</span>
-        </div>
-        <div class="group-grid">${group.images.map((item, index) => imageCard(item, { role: index === 0 ? "keeper" : "candidate" })).join("")}</div>
-      </section>
-    `)
-    .join("");
+function markSelectedCard() {
+  els.content.querySelectorAll(".image-card").forEach((card) => {
+    card.classList.toggle("selected", Number(card.dataset.id) === state.selectedId);
+  });
+}
+
+async function labelImage(id, payload) {
+  await api(`/api/images/${id}/label`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  setStatus("已更新标记。");
+  await loadStats();
+  await loadContent();
+}
+
+function setView(view) {
+  state.view = view;
+  state.selectedId = null;
+  els.navButtons.forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  renderSummary();
+  loadContent().catch((error) => setStatus(error.message));
 }
 
 function formatSize(value) {
@@ -204,7 +282,7 @@ function escapeHtml(value) {
 els.scanBtn.addEventListener("click", async () => {
   try {
     setBusy(true);
-    setStatus("正在扫描...图片多时需要几十秒，请不要重复点击。");
+    setStatus("正在筛图...图片多时需要一会儿，请不要关闭窗口。");
     await new Promise((resolve) => setTimeout(resolve, 80));
     const result = await api("/api/scan", {
       method: "POST",
@@ -215,7 +293,10 @@ els.scanBtn.addEventListener("click", async () => {
         recursive: els.recursiveInput.checked,
       }),
     });
-    setStatus(`扫描完成：${result.total} 张，${result.exact_groups} 组完全重复，${result.similar_groups} 组相似图`);
+    const failedText = result.failed?.length ? `，${result.failed.length} 个文件未能读取` : "";
+    setStatus(`筛图完成：${result.total} 张，${result.exact_groups} 组完全重复，${result.similar_groups} 组相似图${failedText}`);
+    state.view = "recommend";
+    els.navButtons.forEach((button) => button.classList.toggle("active", button.dataset.view === state.view));
     await loadStats();
     await loadContent();
   } catch (error) {
@@ -225,8 +306,7 @@ els.scanBtn.addEventListener("click", async () => {
   }
 });
 
-async function copyMode(mode) {
-  const label = mode === "keepers" ? "保留建议" : "处理候选";
+async function copyMode(mode, label) {
   if (!window.confirm(`确认复制${label}到输出文件夹？原图不会被删除或移动。`)) {
     return;
   }
@@ -238,8 +318,34 @@ async function copyMode(mode) {
   setStatus(`已复制 ${result.copied} 张到 ${result.target}`);
 }
 
-els.copyCandidatesBtn.addEventListener("click", () => copyMode("candidates").catch((error) => setStatus(error.message)));
-els.copyKeepersBtn.addEventListener("click", () => copyMode("keepers").catch((error) => setStatus(error.message)));
+async function organizeOutput() {
+  if (!window.confirm("确认按精选、较差、空镜、废片复制整理到输出文件夹？原图不会被删除或移动。")) {
+    return;
+  }
+  const result = await api("/api/organize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder: els.outputInput.value.trim() }),
+  });
+  const counts = Object.entries(result.counts || {}).map(([key, value]) => `${key}${value}`).join(" / ");
+  setStatus(`已整理到 ${result.target}：${counts}`);
+}
+
+async function generateXmp() {
+  const result = await api("/api/xmp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder: els.outputInput.value.trim(), mode: state.view in REVIEW ? state.view : "selected" }),
+  });
+  setStatus(`已生成 ${result.written} 个 XMP 到 ${result.target}`);
+}
+
+els.copySelectedBtn.addEventListener("click", () => copyMode("selected", "精选照片").catch((error) => setStatus(error.message)));
+els.copyWasteBtn.addEventListener("click", () => copyMode("waste", "废片照片").catch((error) => setStatus(error.message)));
+els.copyCandidatesBtn.addEventListener("click", () => copyMode("candidates", "重复候选").catch((error) => setStatus(error.message)));
+els.copyKeepersBtn.addEventListener("click", () => copyMode("keepers", "组内最佳").catch((error) => setStatus(error.message)));
+els.organizeBtn.addEventListener("click", () => organizeOutput().catch((error) => setStatus(error.message)));
+els.xmpBtn.addEventListener("click", () => generateXmp().catch((error) => setStatus(error.message)));
 
 async function pickFolder(input, title) {
   setStatus("正在打开文件夹选择窗口...");
@@ -273,11 +379,18 @@ els.thresholdInput.addEventListener("input", () => {
 });
 
 els.navButtons.forEach((button) => {
+  button.addEventListener("click", () => setView(button.dataset.view || "all"));
+});
+
+els.percentButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    els.navButtons.forEach((item) => item.classList.remove("active"));
-    button.classList.add("active");
-    state.view = button.dataset.view || "all";
-    loadContent();
+    state.recommendPercent = Number(button.dataset.percent || 100);
+    els.percentButtons.forEach((item) => item.classList.toggle("active", item === button));
+    if (state.view !== "recommend") {
+      setView("recommend");
+    } else {
+      loadContent().catch((error) => setStatus(error.message));
+    }
   });
 });
 
@@ -286,8 +399,29 @@ els.searchInput.addEventListener("input", () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     state.q = els.searchInput.value.trim();
-    loadContent();
+    loadContent().catch((error) => setStatus(error.message));
   }, 250);
+});
+
+document.addEventListener("keydown", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLButtonElement) {
+    return;
+  }
+  if (!state.selectedId) {
+    return;
+  }
+  if (/^[1-5]$/.test(event.key)) {
+    labelImage(state.selectedId, { star_rating: Number(event.key) }).catch((error) => setStatus(error.message));
+  } else if (event.key.toLowerCase() === "f") {
+    labelImage(state.selectedId, { review_status: "selected" }).catch((error) => setStatus(error.message));
+  } else if (event.key.toLowerCase() === "w") {
+    labelImage(state.selectedId, { review_status: "weak" }).catch((error) => setStatus(error.message));
+  } else if (event.key.toLowerCase() === "e") {
+    labelImage(state.selectedId, { review_status: "empty" }).catch((error) => setStatus(error.message));
+  } else if (event.key.toLowerCase() === "d") {
+    labelImage(state.selectedId, { review_status: "waste" }).catch((error) => setStatus(error.message));
+  }
 });
 
 loadStats().then(loadContent).catch((error) => setStatus(error.message));
