@@ -16,7 +16,7 @@
 
 ## 下载安装
 
-打开 [Releases 下载页](https://github.com/xiaokaige1130-maker/saitu-magic-box/releases/latest)，下载最新的 `筛图魔术盒-v1.0.0-Windows-x64.zip`。
+打开 [Releases 下载页](https://github.com/xiaokaige1130-maker/saitu-magic-box/releases/latest)，下载最新的 `SaituMagicBox-v1.0.0-Windows-x64.zip`。
 
 1. 解压 ZIP 文件。
 2. 双击 `筛图魔术盒.exe` 启动。
