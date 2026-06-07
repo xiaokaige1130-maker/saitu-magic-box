@@ -9,9 +9,8 @@ python -m PyInstaller `
   --noconfirm `
   --clean `
   --onedir `
+  --windowed `
   --name $appName `
-  --add-data "app\templates;app\templates" `
-  --add-data "app\static;app\static" `
   launcher.py
 
 Write-Host "EXE: $PSScriptRoot\dist\$appName\$appName.exe"
